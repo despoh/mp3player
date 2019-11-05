@@ -1,15 +1,18 @@
 package com.example.mp3player;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PersistableBundle;
 import android.util.Log;
 import android.widget.Button;
 import android.widget.ListView;
@@ -41,17 +44,72 @@ public class MainActivity extends AppCompatActivity {
 
     private String lastSelectedSongPath;
 
+    private Boolean resumePlease = false;
+    private Boolean resumeBLAH = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
 
+
+
+        Log.d("pondo","oncreate called");
+
         linkViewToVariables();
         populateSongsListView();
         isServiceBounded = false;
 
     }
+
+
+
+
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        Log.d("pondo","onstart get called");
+        resumePlease = getIntent().getBooleanExtra("return",false);
+        SharedPreferences pref = getApplicationContext().getSharedPreferences("MyPref", 0); // 0 - for private mode
+        lastSelectedSongPath = pref.getString("lastSelectedSongPath","");
+        songProgressTextView.setText( minuteSecondString(pref.getInt("lastProgress",0)));
+        if(resumePlease){
+            Log.d("pondo",resumePlease + "get boolean extra get called");
+            Intent intent = new Intent(this,  PlayerService.class);
+            Log.d("pondo",lastSelectedSongPath + " debug");
+            intent.putExtra("path",lastSelectedSongPath);
+            this.bindService(intent, connection, Context.BIND_AUTO_CREATE);
+
+        }else{
+            stopButton.setEnabled(false);
+            if(!lastSelectedSongPath.isEmpty()){
+                playPauseButton.setEnabled(true);
+            }else{
+                playPauseButton.setEnabled(false);
+            }
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+
+        if(isServiceBounded){
+            Log.d("pondo","onstop get called");
+            SharedPreferences pref = getApplicationContext().getSharedPreferences("MyPref", 0); // 0 - for private mode
+            SharedPreferences.Editor editor = pref.edit();
+            editor.putBoolean("return", true);
+            editor.putString("lastSelectedSongPath",lastSelectedSongPath);
+            editor.putInt("lastProgress",playerService.player.getProgress());
+            editor.commit();
+            unbindService(connection);
+        }
+
+
+    }
+
 
     private void populateSongsListView(){
         File musicDir = new File(
@@ -73,6 +131,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void playMusic(String path){
 
+
         if(isServiceBounded){
             if(playerService.player.getState() == MP3Player.MP3PlayerState.PLAYING || playerService.player.getState() == MP3Player.MP3PlayerState.PAUSED){
                 playerService.player.stop();
@@ -80,18 +139,20 @@ public class MainActivity extends AppCompatActivity {
 
             playerService.player.load(path);
             playerService.player.play();
-            startProgressBar();
+            updateUIToShowProgress();
 
         }else{
             Intent intent = new Intent(this,  PlayerService.class);
             intent.putExtra("path",path);
-
             startService(intent);
-            bindService(intent, connection, Context.BIND_AUTO_CREATE);
+            this.bindService(intent, connection, Context.BIND_AUTO_CREATE);
 
         }
 
         playPauseButton.setText("Pause");
+        stopButton.setEnabled(true);
+        playPauseButton.setEnabled(true);
+
 
 
     }
@@ -116,24 +177,40 @@ public class MainActivity extends AppCompatActivity {
         }else if(playerService.player.state == MP3Player.MP3PlayerState.PAUSED){
             playerService.player.play();
             playPauseButton.setText("Pause");
-            startProgressBar();
+            updateUIToShowProgress();
         }else if(playerService.player.state == MP3Player.MP3PlayerState.STOPPED){
             playMusic(lastSelectedSongPath);
         }
     }
 
     public void stopButtonClicked(View view) {
-        if(isServiceBounded && playerService.player.state == MP3Player.MP3PlayerState.PLAYING){
-            playerService.player.stop();
+        if(isServiceBounded && (playerService.player.state == MP3Player.MP3PlayerState.PLAYING || playerService.player.state == MP3Player.MP3PlayerState.PAUSED)){
+//            playerService.player.stop();
+            Intent myService = new Intent(this, PlayerService.class);
+            this.stopService(myService);
+            this.unbindService(connection);
             isServiceBounded = false;
-            unbindService(connection);
+
+
+            progressBar.setProgress(1);
+            songProgressTextView.setText("0 : 00");
+            songDurationTextView.setText("0 : 00");
+            playPauseButton.setText("Play");
+            stopButton.setEnabled(false);
+
         }
     }
 
-    public void startProgressBar(){
+    public void updateUIToShowProgress(){
+
+        if(playerService.player.state == MP3Player.MP3PlayerState.PLAYING){
+            playPauseButton.setText("Pause");
+        }else{
+            playPauseButton.setText("Play");
+        }
 
         progressBar.setProgress(0);
-        songProgressTextView.setText("0 : 00");
+//        songProgressTextView.setText("0 : 00");
         songDurationTextView.setText(minuteSecondString(playerService.player.getDuration()));
         String string = playerService.player.getFilePath().substring(26);
         songTitleTextView.setText(string);
@@ -146,24 +223,34 @@ public class MainActivity extends AppCompatActivity {
 
                 while(isServiceBounded && playerService.player.getProgress() < playerService.player.getDuration() && playerService.player.state == MP3Player.MP3PlayerState.PLAYING){
 
+                    final double percent = (double)playerService.player.getProgress()/playerService.player.getDuration()*100;
 
-
-                    double percent = (double)playerService.player.getProgress()/playerService.player.getDuration()*100;
                     if(!(progressBar.getProgress() == (int)percent)){
-                        progressBar.setProgress((int)percent);
+                        if(isServiceBounded){
+                            progressBar.setProgress((int)percent,true);
 
+                        }else{
+                            progressBar.setProgress(0,true);
+
+                        }
                     }
+
 
 
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
-                            if(playerService.player.getProgress()<playerService.player.getDuration()){
-                                songProgressTextView.setText(minuteSecondString(playerService.player.getProgress()));
-                            }else{
-                                playPauseButton.setText("Play");
-                                playerService.player.stop();
+
+                            if(isServiceBounded){
+                                if(playerService.player.getProgress()<playerService.player.getDuration()){
+                                    songProgressTextView.setText(minuteSecondString(playerService.player.getProgress()));
+                                }else{
+                                    playPauseButton.setText("Play");
+                                    playerService.player.stop();
+                                }
+
                             }
+
                         }
                     });
 
@@ -200,11 +287,10 @@ public class MainActivity extends AppCompatActivity {
         public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
             PlayerService.MyBinder binder = (PlayerService.MyBinder) iBinder;
             playerService = binder.getService();
-            songsListView.setEnabled(true);
             isServiceBounded = true;
             Log.d("pondo","connected");
 
-            startProgressBar();
+            updateUIToShowProgress();
         }
 
         @Override

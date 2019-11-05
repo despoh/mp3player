@@ -1,5 +1,11 @@
 package com.example.mp3player;
 
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.Context;
+import android.content.Intent;
+import android.graphics.drawable.Icon;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.util.Log;
@@ -96,4 +102,6 @@ public class MP3Player {
             mediaPlayer = null;
         }
     }
+
+
 }
