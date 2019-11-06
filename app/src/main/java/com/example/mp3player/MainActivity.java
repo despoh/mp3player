@@ -1,6 +1,5 @@
 package com.example.mp3player;
 
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
 import android.content.ComponentName;
@@ -9,10 +8,7 @@ import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.os.Handler;
 import android.os.IBinder;
-import android.os.Looper;
-import android.os.PersistableBundle;
 import android.util.Log;
 import android.widget.Button;
 import android.widget.ListView;
@@ -22,7 +18,7 @@ import android.os.Environment;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
-import android.widget.ListView;
+
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
@@ -44,8 +40,7 @@ public class MainActivity extends AppCompatActivity {
 
     private String lastSelectedSongPath;
 
-    private Boolean resumePlease = false;
-    private Boolean resumeBLAH = false;
+    private Boolean isComeBackFromPendingIntent = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -53,9 +48,8 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
 
-
-
-        Log.d("pondo","oncreate called");
+        SharedPreferences pref = getApplicationContext().getSharedPreferences("MyPref", 0);
+        lastSelectedSongPath = pref.getString("lastSelectedSongPath","");
 
         linkViewToVariables();
         populateSongsListView();
@@ -70,25 +64,20 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStart() {
         super.onStart();
-        Log.d("pondo","onstart get called");
-        resumePlease = getIntent().getBooleanExtra("return",false);
-        SharedPreferences pref = getApplicationContext().getSharedPreferences("MyPref", 0); // 0 - for private mode
-        lastSelectedSongPath = pref.getString("lastSelectedSongPath","");
-        songProgressTextView.setText( minuteSecondString(pref.getInt("lastProgress",0)));
-        if(resumePlease){
-            Log.d("pondo",resumePlease + "get boolean extra get called");
+
+        isComeBackFromPendingIntent = getIntent().getBooleanExtra("return",false);
+        SharedPreferences pref = getApplicationContext().getSharedPreferences("MyPref", 0);
+        if(isComeBackFromPendingIntent){
+
             Intent intent = new Intent(this,  PlayerService.class);
-            Log.d("pondo",lastSelectedSongPath + " debug");
             intent.putExtra("path",lastSelectedSongPath);
+            songProgressTextView.setText( minuteSecondString(pref.getInt("lastProgress",0)));
             this.bindService(intent, connection, Context.BIND_AUTO_CREATE);
 
         }else{
             stopButton.setEnabled(false);
-            if(!lastSelectedSongPath.isEmpty()){
-                playPauseButton.setEnabled(true);
-            }else{
-                playPauseButton.setEnabled(false);
-            }
+            playPauseButton.setEnabled(false);
+            songTitleTextView.setText("");
         }
     }
 
@@ -96,16 +85,20 @@ public class MainActivity extends AppCompatActivity {
     protected void onStop() {
         super.onStop();
 
+        SharedPreferences pref = getApplicationContext().getSharedPreferences("MyPref", 0); // 0 - for private mode
+        SharedPreferences.Editor editor = pref.edit();
+
         if(isServiceBounded){
-            Log.d("pondo","onstop get called");
-            SharedPreferences pref = getApplicationContext().getSharedPreferences("MyPref", 0); // 0 - for private mode
-            SharedPreferences.Editor editor = pref.edit();
             editor.putBoolean("return", true);
             editor.putString("lastSelectedSongPath",lastSelectedSongPath);
             editor.putInt("lastProgress",playerService.player.getProgress());
-            editor.commit();
             unbindService(connection);
         }
+
+
+
+        editor.putString("lastSelectedSongPath",lastSelectedSongPath);
+        editor.commit();
 
 
     }
@@ -131,6 +124,8 @@ public class MainActivity extends AppCompatActivity {
 
     private void playMusic(String path){
 
+        SharedPreferences pref = getApplicationContext().getSharedPreferences("MyPref", 0); // 0 - for private mode
+        SharedPreferences.Editor editor = pref.edit();
 
         if(isServiceBounded){
             if(playerService.player.getState() == MP3Player.MP3PlayerState.PLAYING || playerService.player.getState() == MP3Player.MP3PlayerState.PAUSED){
@@ -144,6 +139,7 @@ public class MainActivity extends AppCompatActivity {
         }else{
             Intent intent = new Intent(this,  PlayerService.class);
             intent.putExtra("path",path);
+            isServiceBounded = true;
             startService(intent);
             this.bindService(intent, connection, Context.BIND_AUTO_CREATE);
 
@@ -185,12 +181,10 @@ public class MainActivity extends AppCompatActivity {
 
     public void stopButtonClicked(View view) {
         if(isServiceBounded && (playerService.player.state == MP3Player.MP3PlayerState.PLAYING || playerService.player.state == MP3Player.MP3PlayerState.PAUSED)){
-//            playerService.player.stop();
             Intent myService = new Intent(this, PlayerService.class);
             this.stopService(myService);
             this.unbindService(connection);
             isServiceBounded = false;
-
 
             progressBar.setProgress(1);
             songProgressTextView.setText("0 : 00");
@@ -205,15 +199,16 @@ public class MainActivity extends AppCompatActivity {
 
         if(playerService.player.state == MP3Player.MP3PlayerState.PLAYING){
             playPauseButton.setText("Pause");
+            stopButton.setEnabled(true);
         }else{
-            playPauseButton.setText("Play");
+             playPauseButton.setText("Play");
         }
 
         progressBar.setProgress(0);
-//        songProgressTextView.setText("0 : 00");
         songDurationTextView.setText(minuteSecondString(playerService.player.getDuration()));
-        String string = playerService.player.getFilePath().substring(26);
-        songTitleTextView.setText(string);
+
+
+        songTitleTextView.setText(playerService.player.getFilePath().substring(26));
 
 
         progressBarThread = new Thread(new Runnable() {
@@ -288,14 +283,11 @@ public class MainActivity extends AppCompatActivity {
             PlayerService.MyBinder binder = (PlayerService.MyBinder) iBinder;
             playerService = binder.getService();
             isServiceBounded = true;
-            Log.d("pondo","connected");
-
             updateUIToShowProgress();
         }
 
         @Override
         public void onServiceDisconnected(ComponentName componentName) {
-            Log.d("pondo","disconnected");
             isServiceBounded=false;
         }
 

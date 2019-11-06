@@ -31,7 +31,7 @@ public class PlayerService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String path = intent.getStringExtra("path");
-        Log.d("pondo","onstartCommand get Called");
+
         player.load(path);
         player.play();
         createChannel();
@@ -51,12 +51,24 @@ public class PlayerService extends Service {
     }
 
     @Override
+    public boolean onUnbind(Intent intent) {
+        return super.onUnbind(intent);
+    }
+
+    @Override
+    public void onRebind(Intent intent) {
+        super.onRebind(intent);
+    }
+
+    @Override
     public void onDestroy() {
         Toast.makeText(this, "Playing service Stopped", Toast.LENGTH_LONG).show();
         player.stop();
         stopForeground(true);
         super.onDestroy();
     }
+
+    //Credits to NotifyDemo on Moodle
 
     public void sendNotification(){
         Intent resultIntent = new Intent(this, MainActivity.class);
@@ -81,8 +93,8 @@ public class PlayerService extends Service {
         Notification notification =
                 new Notification.Builder(this,
                         CHANNEL_ID)
-                        .setContentTitle("Example Notification")
-                        .setContentText("This is an example notification.")
+                        .setContentTitle("MP3 Player")
+                        .setContentText("Open and play")
                         .setSmallIcon(android.R.drawable.ic_dialog_info)
                         .setChannelId(CHANNEL_ID)
                         .setContentIntent(pendingIntent)
@@ -100,8 +112,8 @@ public class PlayerService extends Service {
         NotificationManager notificationManager = (NotificationManager)
                 getSystemService(Context.NOTIFICATION_SERVICE);
 
-        CharSequence name = "NotifyDemo News";
-        String description = "Example News Channel";
+        CharSequence name = "MP3 Player";
+        String description = "music player Channel";
         int importance = NotificationManager.IMPORTANCE_LOW;
         NotificationChannel channel =
                 new NotificationChannel(CHANNEL_ID, name, importance);
